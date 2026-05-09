@@ -1,0 +1,32 @@
+[package]
+name = "sigscan"
+version = "0.1.0"
+edition = "2024"
+authors = ["0x355"]
+license = "MIT"
+readme = "README.md"
+
+[[bin]]
+name = "sigscan"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+thiserror = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Threading",
+    "Win32_System_Memory",
+    "Win32_System_ProcessStatus",
+] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
