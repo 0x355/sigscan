@@ -41,10 +41,10 @@ pub fn scan(data: &[u8], pattern: &Pattern) -> Vec<Match> {
 #[inline(always)]
 fn matches_at(data: &[u8], offset: usize, pattern: &Pattern) -> bool {
     for (j, pat_byte) in pattern.iter().enumerate() {
-        if let Some(expected) = pat_byte {
-            if data[offset + j] != *expected {
-                return false;
-            }
+        if let Some(expected) = pat_byte
+            && data[offset + j] != *expected
+        {
+            return false;
         }
     }
     true

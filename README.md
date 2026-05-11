@@ -5,7 +5,7 @@ A fast, read-only **signature / pattern scanner** for Windows x64 processes and 
 Built for reverse engineering research, no injection, no writes, no shellcode.
 
 ```
-[*] Process: [+] Process : Notepad.exe  (PID 22224)
+[+] Process : Notepad.exe  (PID 22224)
 [+] Module  : Notepad.exe
 [+] Range   : 00007FF7CB3B0000 - 00007FF7CB6B1000  (3076 KiB)
 

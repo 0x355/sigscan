@@ -1,11 +1,11 @@
 use crate::utils::wide_to_string;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use thiserror::Error;
 use windows_sys::Win32::{
     Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE},
     System::{
         Diagnostics::ToolHelp::{
-            CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+            CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
             TH32CS_SNAPPROCESS,
         },
         Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ},
@@ -45,13 +45,7 @@ pub fn find(target: &str) -> Result<ProcessInfo> {
 }
 
 pub fn open(pid: u32) -> Result<ProcessHandle> {
-    let handle = unsafe {
-        OpenProcess(
-            PROCESS_VM_READ | PROCESS_QUERY_INFORMATION,
-            0,
-            pid,
-        )
-    };
+    let handle = unsafe { OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, 0, pid) };
 
     if handle.is_null() {
         let err = std::io::Error::last_os_error();

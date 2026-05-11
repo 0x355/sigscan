@@ -40,10 +40,7 @@ pub fn print_match(abs_addr: u64, rel_offset: usize, bytes: &[u8]) {
         "    {DIM}address{RESET} : {BOLD}{YELLOW}{:016X}{RESET}",
         abs_addr
     );
-    println!(
-        "    {DIM}offset {RESET} : {BOLD}+0x{:X}{RESET}",
-        rel_offset
-    );
+    println!("    {DIM}offset {RESET} : {BOLD}+0x{:X}{RESET}", rel_offset);
     println!("    {DIM}bytes  {RESET} : {CYAN}{}{RESET}", hex_str);
 }
 

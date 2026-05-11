@@ -1,14 +1,13 @@
 use crate::{modules::ModuleInfo, process::ProcessHandle};
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use windows_sys::Win32::{
     Foundation::HANDLE,
     System::{
         Diagnostics::Debug::ReadProcessMemory,
         Memory::{
-            VirtualQueryEx, MEMORY_BASIC_INFORMATION, MEM_COMMIT,
-            PAGE_EXECUTE, PAGE_EXECUTE_READ, PAGE_EXECUTE_READWRITE,
-            PAGE_EXECUTE_WRITECOPY, PAGE_READONLY, PAGE_READWRITE,
-            PAGE_WRITECOPY,
+            MEM_COMMIT, MEMORY_BASIC_INFORMATION, PAGE_EXECUTE, PAGE_EXECUTE_READ,
+            PAGE_EXECUTE_READWRITE, PAGE_EXECUTE_WRITECOPY, PAGE_READONLY, PAGE_READWRITE,
+            PAGE_WRITECOPY, VirtualQueryEx,
         },
     },
 };

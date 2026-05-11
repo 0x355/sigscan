@@ -22,8 +22,7 @@ pub fn parse(input: &str) -> Result<Pattern, PatternError> {
     let mut pattern = Vec::with_capacity(tokens.len());
 
     for (i, token) in tokens.iter().enumerate() {
-        let elem = parse_token(token)
-            .map_err(|_| PatternError::InvalidToken(token.to_string()))?;
+        let elem = parse_token(token).map_err(|_| PatternError::InvalidToken(token.to_string()))?;
 
         if i == 0 && elem.is_none() {
             return Err(PatternError::StartsWithWildcard);
@@ -100,10 +99,7 @@ mod tests {
             parse("48 ZZ 89"),
             Err(PatternError::InvalidToken(_))
         ));
-        assert!(matches!(
-            parse("48 1"),
-            Err(PatternError::InvalidToken(_))
-        ));
+        assert!(matches!(parse("48 1"), Err(PatternError::InvalidToken(_))));
         assert!(matches!(
             parse("48 ABC"),
             Err(PatternError::InvalidToken(_))

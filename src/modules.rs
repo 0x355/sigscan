@@ -1,10 +1,10 @@
 use crate::utils::wide_to_string;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use windows_sys::Win32::{
     Foundation::{CloseHandle, INVALID_HANDLE_VALUE},
     System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Module32FirstW, Module32NextW, MODULEENTRY32W,
-        TH32CS_SNAPMODULE, TH32CS_SNAPMODULE32,
+        CreateToolhelp32Snapshot, MODULEENTRY32W, Module32FirstW, Module32NextW, TH32CS_SNAPMODULE,
+        TH32CS_SNAPMODULE32,
     },
 };
 
@@ -16,9 +16,7 @@ pub struct ModuleInfo {
 }
 
 pub fn enumerate(pid: u32) -> Result<Vec<ModuleInfo>> {
-    let snap = unsafe {
-        CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid)
-    };
+    let snap = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid) };
 
     if snap == INVALID_HANDLE_VALUE {
         let err = std::io::Error::last_os_error();
