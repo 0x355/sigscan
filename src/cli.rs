@@ -37,4 +37,10 @@ pub struct Args {
 
     #[arg(long)]
     pub all_sections: bool,
+
+    #[arg(long)]
+    pub disasm: bool,
+
+    #[arg(long, value_name = "N", default_value_t = 5)]
+    pub disasm_count: usize,
 }

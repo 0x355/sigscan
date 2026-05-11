@@ -1,4 +1,5 @@
 pub mod cli;
+pub mod disasm;
 pub mod pattern;
 pub mod patterns_file;
 pub mod pe;
@@ -63,6 +64,7 @@ pub fn run(args: Args) -> anyhow::Result<()> {
     };
 
     let limit = if args.first { Some(1) } else { args.count };
+    let bitness: u32 = if is_wow64 { 32 } else { 64 };
     let mut per_pattern_count = vec![0usize; named_patterns.len()];
     let mut total_matches = 0usize;
 
@@ -121,6 +123,16 @@ pub fn run(args: Args) -> anyhow::Result<()> {
                     let rel = hit.offset + start;
                     let abs_addr = module.base + rel as u64;
                     utils::print_match(&label, abs_addr, rel, &hit.bytes);
+                    if args.disasm {
+                        let lines = disasm::instructions_at(
+                            &data,
+                            rel,
+                            abs_addr,
+                            bitness,
+                            args.disasm_count,
+                        );
+                        utils::print_disasm(&lines);
+                    }
                     per_pattern_count[i] += 1;
                     total_matches += 1;
                     module_had_match = true;

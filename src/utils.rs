@@ -1,4 +1,4 @@
-use crate::{modules::ModuleInfo, process::ProcessInfo};
+use crate::{disasm::DisasmLine, modules::ModuleInfo, process::ProcessInfo};
 
 const RESET: &str = "\x1b[0m";
 const BOLD: &str = "\x1b[1m";
@@ -47,6 +47,21 @@ pub fn print_match(label: &str, abs_addr: u64, rel_offset: usize, bytes: &[u8]) 
     );
     println!("    {DIM}offset {RESET} : {BOLD}+0x{:X}{RESET}", rel_offset);
     println!("    {DIM}bytes  {RESET} : {CYAN}{}{RESET}", hex_str);
+}
+
+pub fn print_disasm(lines: &[DisasmLine]) {
+    if lines.is_empty() {
+        return;
+    }
+    println!("    {DIM}disasm {RESET} :");
+    for line in lines {
+        let bytes_hex: Vec<String> = line.bytes.iter().map(|b| format!("{:02X}", b)).collect();
+        let bytes_str = bytes_hex.join(" ");
+        println!(
+            "      {YELLOW}{:016X}{RESET}  {DIM}{:<30}{RESET}  {CYAN}{}{RESET}",
+            line.ip, bytes_str, line.text
+        );
+    }
 }
 
 pub fn print_no_matches() {

@@ -118,6 +118,8 @@ sigscan <TARGET> <PATTERN> [OPTIONS]
 | `-n`, `--count N` | Stop after N matches (per pattern when `--patterns` is used) |
 | `--all-sections`  | Scan every section, not just executable ones (default scans only `IMAGE_SCN_MEM_EXECUTE`, e.g. `.text`) |
 | `--patterns FILE` | Scan multiple signatures in a single pass; mutually exclusive with the positional `PATTERN` |
+| `--disasm`        | Print Intel-syntax disassembly starting at each match address (uses `iced-x86`; bitness auto-detected from the target's WOW64 status) |
+| `--disasm-count N`| Number of instructions to disassemble after each match (default 5) |
 
 ### `--patterns` file format
 
@@ -154,7 +156,8 @@ Planned improvements, roughly in order of impact:
 - [x] **Multi-pattern scan in a single pass.** Accept `--patterns sigs.txt` (one pattern per line, with optional labels) so multiple signatures can be located without re-enumerating modules and re-reading memory N times.
 - [ ] **`--json` output mode.** Machine-readable output for piping into other tools (IDA scripts, automation, CI checks of known offsets).
 - [x] **Replace `unreachable!` in `scanner.rs` with `debug_assert!` + early return.** Today a hypothetical parser bug becomes a release-mode panic; a soft fallback is safer.
-- [ ] **Disassembly context at each match.** Optional `--disasm` flag that uses `iced-x86` to print the instruction at the matched address (and a few before/after) to help confirm the hit is what you expected.
+- [x] **Disassembly context at each match.** Optional `--disasm` flag that uses `iced-x86` to print the instruction at the matched address (and a few before/after) to help confirm the hit is what you expected. *(Forward-only currently; backward context requires a synchronization heuristic — separate TODO below.)*
+- [ ] **Backward disassembly context.** Extend `--disasm` to also show K instructions before the match by synchronizing on candidate stream offsets (try `match-1..match-15`, pick the deepest that lands cleanly on the match address). Useful for confirming a match sits at a function prologue boundary.
 - [ ] **Scan PE files on disk.** Allow `sigscan <path.exe> <pattern>` to load and scan a PE without attaching to a live process, useful when the target can't run or is anti-debug heavy.
 - [ ] **Aho-Corasick / Boyer-Moore for long patterns.** The current scan is O(n·m). For long patterns or multi-pattern mode, a smarter algorithm would amortize the cost.
 
