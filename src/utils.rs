@@ -76,7 +76,7 @@ pub fn print_match(label: &str, abs_addr: u64, rel_offset: usize, bytes: &[u8]) 
     println!("    {DIM}bytes  {RESET} : {CYAN}{}{RESET}", hex_str);
 }
 
-pub fn print_disasm(lines: &[DisasmLine]) {
+pub fn print_disasm(lines: &[DisasmLine], match_ip: Option<u64>) {
     if lines.is_empty() {
         return;
     }
@@ -84,9 +84,14 @@ pub fn print_disasm(lines: &[DisasmLine]) {
     for line in lines {
         let bytes_hex: Vec<String> = line.bytes.iter().map(|b| format!("{:02X}", b)).collect();
         let bytes_str = bytes_hex.join(" ");
+        let prefix = if Some(line.ip) == match_ip {
+            format!("   {BOLD}{MAGENTA}>>{RESET} ")
+        } else {
+            "      ".to_string()
+        };
         println!(
-            "      {YELLOW}{:016X}{RESET}  {DIM}{:<30}{RESET}  {CYAN}{}{RESET}",
-            line.ip, bytes_str, line.text
+            "{}{YELLOW}{:016X}{RESET}  {DIM}{:<30}{RESET}  {CYAN}{}{RESET}",
+            prefix, line.ip, bytes_str, line.text
         );
     }
 }

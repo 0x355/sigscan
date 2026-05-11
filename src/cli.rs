@@ -43,4 +43,7 @@ pub struct Args {
 
     #[arg(long, value_name = "N", default_value_t = 5)]
     pub disasm_count: usize,
+
+    #[arg(long, value_name = "N", default_value_t = 2)]
+    pub disasm_before: usize,
 }

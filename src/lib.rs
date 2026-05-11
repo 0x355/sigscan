@@ -313,14 +313,15 @@ fn scan_with_ranges(
                 let data_off = range.data_start + hit.offset;
                 utils::print_match(&label, abs_addr, rel, &hit.bytes);
                 if args.disasm {
-                    let lines = disasm::instructions_at(
+                    let lines = disasm::instructions_around(
                         data,
                         data_off,
                         abs_addr,
                         bitness,
+                        args.disasm_before,
                         args.disasm_count,
                     );
-                    utils::print_disasm(&lines);
+                    utils::print_disasm(&lines, Some(abs_addr));
                 }
                 per_pattern_count[i] += 1;
                 *total += 1;
