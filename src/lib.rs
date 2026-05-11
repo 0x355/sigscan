@@ -23,10 +23,11 @@ pub fn run(args: Args) -> anyhow::Result<()> {
     let proc_info = process::find(&args.target)
         .with_context(|| format!("Could not find process {}", args.target))?;
 
-    utils::print_header(&proc_info);
-
     let handle = process::open(proc_info.pid)
         .with_context(|| format!("Failed to open process PID {}", proc_info.pid))?;
+
+    let is_wow64 = process::is_wow64(&handle);
+    utils::print_header(&proc_info, is_wow64);
 
     let all_modules =
         modules::enumerate(proc_info.pid).context("Failed to enumerate process modules")?;

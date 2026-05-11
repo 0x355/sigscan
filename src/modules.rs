@@ -15,18 +15,36 @@ pub struct ModuleInfo {
     pub size: u32,
 }
 
-pub fn enumerate(pid: u32) -> Result<Vec<ModuleInfo>> {
-    let snap = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid) };
+const ERROR_PARTIAL_COPY: i32 = 299;
+const SNAPSHOT_RETRIES: u32 = 5;
+const SNAPSHOT_RETRY_DELAY_MS: u64 = 50;
 
-    if snap == INVALID_HANDLE_VALUE {
-        let err = std::io::Error::last_os_error();
-        bail!(
-            "CreateToolhelp32Snapshot(SNAPMODULE) failed for PID {} -> {}\n\
-            Hint: the process may have exited, or you need Administrator rights.",
-            pid,
-            err
-        );
+fn snapshot_modules(pid: u32) -> Result<windows_sys::Win32::Foundation::HANDLE> {
+    let flags = TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32;
+    let mut last_err = std::io::Error::last_os_error();
+
+    for _ in 0..SNAPSHOT_RETRIES {
+        let snap = unsafe { CreateToolhelp32Snapshot(flags, pid) };
+        if snap != INVALID_HANDLE_VALUE {
+            return Ok(snap);
+        }
+        last_err = std::io::Error::last_os_error();
+        if last_err.raw_os_error() != Some(ERROR_PARTIAL_COPY) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(SNAPSHOT_RETRY_DELAY_MS));
     }
+
+    bail!(
+        "CreateToolhelp32Snapshot(SNAPMODULE) failed for PID {} -> {}\n\
+        Hint: the process may have exited, or you need Administrator rights.",
+        pid,
+        last_err
+    );
+}
+
+pub fn enumerate(pid: u32) -> Result<Vec<ModuleInfo>> {
+    let snap = snapshot_modules(pid)?;
 
     struct SnapGuard(windows_sys::Win32::Foundation::HANDLE);
     impl Drop for SnapGuard {

@@ -8,7 +8,7 @@ use windows_sys::Win32::{
             CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
             TH32CS_SNAPPROCESS,
         },
-        Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ},
+        Threading::{IsWow64Process, OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ},
     },
 };
 
@@ -42,6 +42,12 @@ pub fn find(target: &str) -> Result<ProcessInfo> {
     } else {
         find_by_name(target)
     }
+}
+
+pub fn is_wow64(handle: &ProcessHandle) -> bool {
+    let mut wow64: i32 = 0;
+    let ok = unsafe { IsWow64Process(handle.0, &mut wow64) };
+    ok != 0 && wow64 != 0
 }
 
 pub fn open(pid: u32) -> Result<ProcessHandle> {

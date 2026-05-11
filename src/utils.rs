@@ -8,10 +8,11 @@ const YELLOW: &str = "\x1b[33m";
 const MAGENTA: &str = "\x1b[35m";
 const DIM: &str = "\x1b[2m";
 
-pub fn print_header(proc: &ProcessInfo) {
+pub fn print_header(proc: &ProcessInfo, is_wow64: bool) {
+    let arch = if is_wow64 { "x86 WOW64" } else { "x64" };
     println!(
-        "\n{BOLD}{GREEN}[+]{RESET} Process : {BOLD}{}{RESET}  {DIM}(PID {}){RESET}",
-        proc.name, proc.pid
+        "\n{BOLD}{GREEN}[+]{RESET} Process : {BOLD}{}{RESET}  {DIM}(PID {}, {}){RESET}",
+        proc.name, proc.pid, arch
     );
 }
 

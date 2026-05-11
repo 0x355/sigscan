@@ -127,7 +127,7 @@ sigscan <TARGET> <PATTERN> [OPTIONS]
 - **Protected processes (PPL).** Anticheat software and some OS processes (`csrss.exe`, `smss.exe`) use kernel-enforced protection levels that prevent `OpenProcess` from succeeding even as Administrator.
 - **Obfuscated / packed modules** If a module's in memory layout differs from its on disk PE (e.g. custom loaders, runtime packing), the reported module size may be inaccurate.
 - **Performance** The scanner is a straightforward 0(n * m) linear search. For very large modules (> 200 MB) and long patterns, consider reducing scope with `--module`.
-- **No 32bit processes** Scanning 32 Bit (WOW64) processes from a 64 bit binary is not currently supported.
+- **WOW64 (32-bit) processes** are supported: their 32-bit modules are enumerated via `TH32CS_SNAPMODULE32` and the process architecture is shown in the header.
 
 ---
 
