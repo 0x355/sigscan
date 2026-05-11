@@ -1,4 +1,5 @@
 use clap::Parser;
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -13,11 +14,17 @@ EXAMPLES:
     sigscan chrome.exe \"E8 ?? ?? ?? ??\" --module chrome.dll
     sigscan notepad.exe \"48 89\" --first
     sigscan notepad.exe \"48 89\" --count 5
+    sigscan notepad.exe --patterns sigs.txt
 "
 )]
 pub struct Args {
     pub target: String,
-    pub pattern: String,
+
+    #[arg(conflicts_with = "patterns", required_unless_present = "patterns")]
+    pub pattern: Option<String>,
+
+    #[arg(long, value_name = "FILE")]
+    pub patterns: Option<PathBuf>,
 
     #[arg(long, short = 'm')]
     pub module: Option<String>,

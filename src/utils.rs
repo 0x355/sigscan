@@ -35,12 +35,12 @@ pub fn print_scope(label: &str) {
     println!("{BOLD}{GREEN}[+]{RESET} Scope   : {CYAN}{}{RESET}", label);
 }
 
-pub fn print_match(abs_addr: u64, rel_offset: usize, bytes: &[u8]) {
+pub fn print_match(label: &str, abs_addr: u64, rel_offset: usize, bytes: &[u8]) {
     let hex_bytes: Vec<String> = bytes.iter().map(|b| format!("{:02X}", b)).collect();
     let hex_str = hex_bytes.join(" ");
 
     println!();
-    println!("  {BOLD}{MAGENTA}[MATCH]{RESET}");
+    println!("  {BOLD}{MAGENTA}[{}]{RESET}", label);
     println!(
         "    {DIM}address{RESET} : {BOLD}{YELLOW}{:016X}{RESET}",
         abs_addr

@@ -1,5 +1,6 @@
 pub mod cli;
 pub mod pattern;
+pub mod patterns_file;
 pub mod pe;
 pub mod scanner;
 
@@ -17,9 +18,21 @@ mod utils;
 #[cfg(target_os = "windows")]
 pub fn run(args: Args) -> anyhow::Result<()> {
     use anyhow::Context;
+    use patterns_file::NamedPattern;
 
-    let pat = pattern::parse(&args.pattern)
-        .with_context(|| format!("Failed to parse pattern {}", args.pattern))?;
+    let named_patterns: Vec<NamedPattern> = match (&args.pattern, &args.patterns) {
+        (Some(p), None) => {
+            let parsed =
+                pattern::parse(p).with_context(|| format!("Failed to parse pattern {}", p))?;
+            vec![NamedPattern {
+                label: None,
+                pattern: parsed,
+            }]
+        }
+        (None, Some(path)) => patterns_file::load(path)
+            .with_context(|| format!("Failed to load patterns from {}", path.display()))?,
+        _ => anyhow::bail!("provide either a positional PATTERN or --patterns FILE"),
+    };
 
     let proc_info = process::find(&args.target)
         .with_context(|| format!("Could not find process {}", args.target))?;
@@ -50,6 +63,7 @@ pub fn run(args: Args) -> anyhow::Result<()> {
     };
 
     let limit = if args.first { Some(1) } else { args.count };
+    let mut per_pattern_count = vec![0usize; named_patterns.len()];
     let mut total_matches = 0usize;
 
     for module in &target_modules {
@@ -93,37 +107,50 @@ pub fn run(args: Args) -> anyhow::Result<()> {
             .join(", ");
         utils::print_scope(&scope_label);
 
-        let mut module_matches: Vec<scanner::Match> = Vec::new();
-        for range in &ranges {
-            let start = range.1;
-            let end = range.2;
-            for hit in scanner::scan(&data[start..end], &pat) {
-                module_matches.push(scanner::Match {
-                    offset: hit.offset + start,
-                    bytes: hit.bytes,
-                });
+        let mut module_had_match = false;
+        for (i, np) in named_patterns.iter().enumerate() {
+            if limit.is_some_and(|l| per_pattern_count[i] >= l) {
+                continue;
+            }
+            let label = label_for(np, i, named_patterns.len());
+
+            'sections: for range in &ranges {
+                let start = range.1;
+                let end = range.2;
+                for hit in scanner::scan(&data[start..end], &np.pattern) {
+                    let rel = hit.offset + start;
+                    let abs_addr = module.base + rel as u64;
+                    utils::print_match(&label, abs_addr, rel, &hit.bytes);
+                    per_pattern_count[i] += 1;
+                    total_matches += 1;
+                    module_had_match = true;
+
+                    if limit.is_some_and(|l| per_pattern_count[i] >= l) {
+                        break 'sections;
+                    }
+                }
             }
         }
 
-        if module_matches.is_empty() {
+        if !module_had_match {
             utils::print_no_matches();
-            continue;
         }
 
-        for hit in &module_matches {
-            let abs_addr = module.base + hit.offset as u64;
-            utils::print_match(abs_addr, hit.offset, &hit.bytes);
-            total_matches += 1;
-
-            if let Some(lim) = limit
-                && total_matches >= lim
-            {
-                utils::print_summary(total_matches);
-                return Ok(());
-            }
+        if limit.is_some_and(|l| per_pattern_count.iter().all(|c| *c >= l)) {
+            utils::print_summary(total_matches);
+            return Ok(());
         }
     }
 
     utils::print_summary(total_matches);
     Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn label_for(np: &patterns_file::NamedPattern, idx: usize, total: usize) -> String {
+    match &np.label {
+        Some(l) => l.clone(),
+        None if total == 1 => "MATCH".to_string(),
+        None => format!("pattern {}", idx + 1),
+    }
 }
