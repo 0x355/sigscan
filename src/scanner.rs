@@ -13,9 +13,9 @@ pub fn scan(data: &[u8], pattern: &Pattern) -> Vec<Match> {
         return Vec::new();
     }
 
-    let first_byte = match pattern[0] {
-        Some(b) => b,
-        None => unreachable!("parser guarantees first element is not a wildcard"),
+    let Some(first_byte) = pattern[0] else {
+        debug_assert!(false, "parser guarantees first element is not a wildcard");
+        return Vec::new();
     };
 
     let limit = data.len() - pat_len + 1;
@@ -123,5 +123,13 @@ mod tests {
     fn empty_data_returns_no_matches() {
         let m = scan(&[], &pat("48 8B"));
         assert!(m.is_empty());
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn leading_wildcard_returns_empty_in_release() {
+        let pat: Pattern = vec![None, Some(0x48)];
+        let data = [0xAAu8, 0xBB, 0x48];
+        assert!(scan(&data, &pat).is_empty());
     }
 }
