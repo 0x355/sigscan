@@ -131,5 +131,20 @@ sigscan <TARGET> <PATTERN> [OPTIONS]
 
 ---
 
+## TODO
+
+Planned improvements, roughly in order of impact:
+
+- [x] **SIMD-accelerated first-byte search.** Replace the manual byte-by-byte skip in `scanner::scan` with `memchr::memchr` to vectorize the candidate-finding loop. Typically 5-20x faster on large modules.
+- [ ] **PE-aware scanning.** Parse the PE headers and limit scanning to `IMAGE_SCN_MEM_EXECUTE` sections by default (e.g. `.text`). Reduces false positives from string/resource data and shrinks the search space. Add `--all-sections` to opt back into the current behavior.
+- [ ] **Multi-pattern scan in a single pass.** Accept `--patterns sigs.txt` (one pattern per line, with optional labels) so multiple signatures can be located without re-enumerating modules and re-reading memory N times.
+- [ ] **`--json` output mode.** Machine-readable output for piping into other tools (IDA scripts, automation, CI checks of known offsets).
+- [ ] **Replace `unreachable!` in `scanner.rs` with `debug_assert!` + early return.** Today a hypothetical parser bug becomes a release-mode panic; a soft fallback is safer.
+- [ ] **Disassembly context at each match.** Optional `--disasm` flag that uses `iced-x86` to print the instruction at the matched address (and a few before/after) to help confirm the hit is what you expected.
+- [ ] **Scan PE files on disk.** Allow `sigscan <path.exe> <pattern>` to load and scan a PE without attaching to a live process, useful when the target can't run or is anti-debug heavy.
+- [ ] **Aho-Corasick / Boyer-Moore for long patterns.** The current scan is O(n·m). For long patterns or multi-pattern mode, a smarter algorithm would amortize the cost.
+
+---
+
 ## License
 MIT

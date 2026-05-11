@@ -1,4 +1,5 @@
 use crate::pattern::Pattern;
+use memchr::memchr_iter;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Match {
@@ -20,19 +21,11 @@ pub fn scan(data: &[u8], pattern: &Pattern) -> Vec<Match> {
     let limit = data.len() - pat_len + 1;
     let mut matches = Vec::new();
 
-    let mut i = 0;
-    while i < limit {
-        if data[i] != first_byte {
-            i += 1;
-            continue;
-        }
-
+    for i in memchr_iter(first_byte, &data[..limit]) {
         if matches_at(data, i, pattern) {
             let bytes = data[i..i + pat_len].to_vec();
             matches.push(Match { offset: i, bytes });
         }
-
-        i += 1;
     }
 
     matches
