@@ -111,7 +111,7 @@ sigscan <TARGET> <PATTERN> [OPTIONS]
 
 | Argument / Option | Description               |
 |-------------------|---------------------------|
-| `TARGET`          | Process name (`notepad.exe`) **or** numeric PID |
+| `TARGET`          | Process name (`notepad.exe`), numeric PID, **or** path to a PE file on disk (anything containing `/`, `\`, or `:` is treated as a file path) |
 | `PATTERN`         | IDA Style hex pattern, e.g. `"48 8B ?? ?? ?? 89"` |
 | `-m`, `--module`  | Restrict scan to one module (e.g. `--module user32.dll`) |
 | `-f`, `--first`   | Stop after the first match (per pattern when `--patterns` is used) |
@@ -120,6 +120,17 @@ sigscan <TARGET> <PATTERN> [OPTIONS]
 | `--patterns FILE` | Scan multiple signatures in a single pass; mutually exclusive with the positional `PATTERN` |
 | `--disasm`        | Print Intel-syntax disassembly starting at each match address (uses `iced-x86`; bitness auto-detected from the target's WOW64 status) |
 | `--disasm-count N`| Number of instructions to disassemble after each match (default 5) |
+
+### File-on-disk scanning
+
+If `TARGET` contains a path separator (`/`, `\`) or a drive-letter colon, `sigscan` reads the PE from disk instead of attaching to a live process. Bitness (`x86` vs `x64`) and the preferred `ImageBase` are taken from the PE Optional Header, so reported absolute addresses are correct *modulo* ASLR at runtime. Module-relative offsets (`+0x...`) are stable across both modes.
+
+```
+sigscan C:\Windows\System32\notepad.exe "48 89 5C 24" --first --disasm
+sigscan ./packed.exe "55 8B EC" --all-sections
+```
+
+This mode also works on Linux/macOS — useful for analyzing Windows binaries from a non-Windows host. The `--module` flag is incompatible with file targets (the file is itself the single module).
 
 ### `--patterns` file format
 
@@ -137,7 +148,7 @@ LeaRipRelative = 48 8D 0D ?? ?? ?? ??
 
 ## Limitations
 
-- **Windows x64 only.** The Toolhelp32 / ReadProcessMemory APIs are Windows specific. The pattern parser and scanner unit tests run on any platform
+- **Live process scanning is Windows-only.** The Toolhelp32 / ReadProcessMemory APIs are Windows specific. File-on-disk scanning works on any OS (Linux/macOS/Windows). Pattern parser, PE parser, scanner, and disassembler unit tests run on all platforms in CI.
 - **Read-only** `sigscan` never writes to the target process. It opens handles only with `PROCESS_VM_READ | PROCESS_QUERY_INFORMATION`.
 - **No kernel-mode scanning.** Only usermode pages accessible via `ReadProcessMemory` are scanned.
 - **Protected processes (PPL).** Anticheat software and some OS processes (`csrss.exe`, `smss.exe`) use kernel-enforced protection levels that prevent `OpenProcess` from succeeding even as Administrator.
@@ -158,7 +169,7 @@ Planned improvements, roughly in order of impact:
 - [x] **Replace `unreachable!` in `scanner.rs` with `debug_assert!` + early return.** Today a hypothetical parser bug becomes a release-mode panic; a soft fallback is safer.
 - [x] **Disassembly context at each match.** Optional `--disasm` flag that uses `iced-x86` to print the instruction at the matched address (and a few before/after) to help confirm the hit is what you expected. *(Forward-only currently; backward context requires a synchronization heuristic — separate TODO below.)*
 - [ ] **Backward disassembly context.** Extend `--disasm` to also show K instructions before the match by synchronizing on candidate stream offsets (try `match-1..match-15`, pick the deepest that lands cleanly on the match address). Useful for confirming a match sits at a function prologue boundary.
-- [ ] **Scan PE files on disk.** Allow `sigscan <path.exe> <pattern>` to load and scan a PE without attaching to a live process, useful when the target can't run or is anti-debug heavy.
+- [x] **Scan PE files on disk.** Allow `sigscan <path.exe> <pattern>` to load and scan a PE without attaching to a live process, useful when the target can't run or is anti-debug heavy. *(File-mode also works on Linux/macOS — the binary no longer hard-fails on non-Windows; only live process scanning stays Windows-only.)*
 - [ ] **Aho-Corasick / Boyer-Moore for long patterns.** The current scan is O(n·m). For long patterns or multi-pattern mode, a smarter algorithm would amortize the cost.
 
 ---

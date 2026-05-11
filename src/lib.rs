@@ -5,7 +5,7 @@ pub mod patterns_file;
 pub mod pe;
 pub mod scanner;
 
-pub use cli::Args;
+mod utils;
 
 #[cfg(target_os = "windows")]
 mod memory;
@@ -13,27 +13,167 @@ mod memory;
 mod modules;
 #[cfg(target_os = "windows")]
 mod process;
-#[cfg(target_os = "windows")]
-mod utils;
 
-#[cfg(target_os = "windows")]
+pub use cli::Args;
+use patterns_file::NamedPattern;
+
+struct ScanRange {
+    name: String,
+    data_start: usize,
+    data_end: usize,
+    rel_at_start: usize,
+    abs_at_start: u64,
+}
+
 pub fn run(args: Args) -> anyhow::Result<()> {
-    use anyhow::Context;
-    use patterns_file::NamedPattern;
+    let named_patterns = load_patterns(&args)?;
+    if is_file_target(&args.target) {
+        scan_file(&args, &named_patterns)
+    } else {
+        scan_process(&args, &named_patterns)
+    }
+}
 
-    let named_patterns: Vec<NamedPattern> = match (&args.pattern, &args.patterns) {
+#[cfg(not(target_os = "windows"))]
+fn scan_process(args: &Args, _named_patterns: &[NamedPattern]) -> anyhow::Result<()> {
+    anyhow::bail!(
+        "'{}' looks like a process name or PID, but live process scanning is only supported on Windows. \
+         Pass a file path (with a / or \\ separator, or a drive letter) to scan a PE on disk.",
+        args.target
+    )
+}
+
+fn load_patterns(args: &Args) -> anyhow::Result<Vec<NamedPattern>> {
+    use anyhow::Context;
+    match (&args.pattern, &args.patterns) {
         (Some(p), None) => {
             let parsed =
                 pattern::parse(p).with_context(|| format!("Failed to parse pattern {}", p))?;
-            vec![NamedPattern {
+            Ok(vec![NamedPattern {
                 label: None,
                 pattern: parsed,
-            }]
+            }])
         }
         (None, Some(path)) => patterns_file::load(path)
-            .with_context(|| format!("Failed to load patterns from {}", path.display()))?,
+            .with_context(|| format!("Failed to load patterns from {}", path.display())),
         _ => anyhow::bail!("provide either a positional PATTERN or --patterns FILE"),
+    }
+}
+
+fn is_file_target(s: &str) -> bool {
+    if s.parse::<u32>().is_ok() {
+        return false;
+    }
+    s.contains('/') || s.contains('\\') || s.contains(':')
+}
+
+fn scan_file(args: &Args, named_patterns: &[NamedPattern]) -> anyhow::Result<()> {
+    use anyhow::Context;
+
+    if args.module.is_some() {
+        anyhow::bail!(
+            "--module is not supported for on-disk file targets (the file is itself the module)"
+        );
+    }
+
+    let path = std::path::Path::new(&args.target);
+    let data =
+        std::fs::read(path).with_context(|| format!("Failed to read file {}", path.display()))?;
+
+    let m = pe::machine(&data)
+        .with_context(|| format!("Failed to read PE headers in {}", path.display()))?;
+    let image_base = pe::image_base(&data)
+        .with_context(|| format!("Failed to read ImageBase in {}", path.display()))?;
+
+    let bitness: u32 = match m {
+        pe::MACHINE_I386 => 32,
+        pe::MACHINE_AMD64 => 64,
+        other => anyhow::bail!(
+            "Unsupported PE Machine 0x{:04X} (only x86 and x64 are supported)",
+            other
+        ),
     };
+
+    utils::print_file_header(path, bitness, image_base, data.len());
+
+    let ranges = build_file_ranges(&data, args.all_sections, image_base);
+    if ranges.is_empty() {
+        utils::print_scope("no executable sections");
+        utils::print_no_matches();
+        utils::print_summary(0);
+        return Ok(());
+    }
+
+    let scope = ranges
+        .iter()
+        .map(|r| r.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    utils::print_scope(&scope);
+
+    let limit = if args.first { Some(1) } else { args.count };
+    let mut per_pattern_count = vec![0usize; named_patterns.len()];
+    let mut total = 0usize;
+
+    let had_match = scan_with_ranges(
+        &data,
+        &ranges,
+        named_patterns,
+        bitness,
+        args,
+        limit,
+        &mut per_pattern_count,
+        &mut total,
+    );
+    if !had_match {
+        utils::print_no_matches();
+    }
+
+    utils::print_summary(total);
+    Ok(())
+}
+
+fn build_file_ranges(data: &[u8], all_sections: bool, image_base: u64) -> Vec<ScanRange> {
+    if all_sections {
+        return vec![ScanRange {
+            name: "entire file".to_string(),
+            data_start: 0,
+            data_end: data.len(),
+            rel_at_start: 0,
+            abs_at_start: image_base,
+        }];
+    }
+    match pe::executable_sections(data) {
+        Ok(secs) => secs
+            .into_iter()
+            .filter_map(|s| {
+                let start = s.pointer_to_raw_data as usize;
+                let end = (start + s.size_of_raw_data as usize).min(data.len());
+                if start >= end || start >= data.len() {
+                    return None;
+                }
+                Some(ScanRange {
+                    name: s.name,
+                    data_start: start,
+                    data_end: end,
+                    rel_at_start: s.virtual_address as usize,
+                    abs_at_start: image_base + s.virtual_address as u64,
+                })
+            })
+            .collect(),
+        Err(_) => vec![ScanRange {
+            name: "entire file (PE headers not parseable)".to_string(),
+            data_start: 0,
+            data_end: data.len(),
+            rel_at_start: 0,
+            abs_at_start: image_base,
+        }],
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn scan_process(args: &Args, named_patterns: &[NamedPattern]) -> anyhow::Result<()> {
+    use anyhow::Context;
 
     let proc_info = process::find(&args.target)
         .with_context(|| format!("Could not find process {}", args.target))?;
@@ -54,7 +194,6 @@ pub fn run(args: Args) -> anyhow::Result<()> {
                 .iter()
                 .filter(|m| m.name.to_lowercase() == fl)
                 .collect();
-
             if filtered.is_empty() {
                 anyhow::bail!("Module '{}' not found in process", filter);
             }
@@ -66,7 +205,7 @@ pub fn run(args: Args) -> anyhow::Result<()> {
     let limit = if args.first { Some(1) } else { args.count };
     let bitness: u32 = if is_wow64 { 32 } else { 64 };
     let mut per_pattern_count = vec![0usize; named_patterns.len()];
-    let mut total_matches = 0usize;
+    let mut total = 0usize;
 
     for module in &target_modules {
         utils::print_module_header(module);
@@ -74,92 +213,128 @@ pub fn run(args: Args) -> anyhow::Result<()> {
         let data = memory::read_module(&handle, module)
             .with_context(|| format!("Failed to read module '{}'", module.name))?;
 
-        let ranges: Vec<(String, usize, usize)> = if args.all_sections {
-            vec![("entire module".to_string(), 0, data.len())]
-        } else {
-            match pe::executable_sections(&data) {
-                Ok(secs) => {
-                    let r: Vec<_> = secs
-                        .into_iter()
-                        .filter_map(|s| {
-                            let start = s.virtual_address as usize;
-                            let end = (start + s.virtual_size as usize).min(data.len());
-                            (start < end && start < data.len()).then_some((s.name, start, end))
-                        })
-                        .collect();
-                    if r.is_empty() {
-                        utils::print_scope("no executable sections");
-                        utils::print_no_matches();
-                        continue;
-                    }
-                    r
-                }
-                Err(_) => vec![(
-                    "entire module (PE headers not parseable)".to_string(),
-                    0,
-                    data.len(),
-                )],
-            }
-        };
-
-        let scope_label = ranges
-            .iter()
-            .map(|(name, _, _)| name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
-        utils::print_scope(&scope_label);
-
-        let mut module_had_match = false;
-        for (i, np) in named_patterns.iter().enumerate() {
-            if limit.is_some_and(|l| per_pattern_count[i] >= l) {
-                continue;
-            }
-            let label = label_for(np, i, named_patterns.len());
-
-            'sections: for range in &ranges {
-                let start = range.1;
-                let end = range.2;
-                for hit in scanner::scan(&data[start..end], &np.pattern) {
-                    let rel = hit.offset + start;
-                    let abs_addr = module.base + rel as u64;
-                    utils::print_match(&label, abs_addr, rel, &hit.bytes);
-                    if args.disasm {
-                        let lines = disasm::instructions_at(
-                            &data,
-                            rel,
-                            abs_addr,
-                            bitness,
-                            args.disasm_count,
-                        );
-                        utils::print_disasm(&lines);
-                    }
-                    per_pattern_count[i] += 1;
-                    total_matches += 1;
-                    module_had_match = true;
-
-                    if limit.is_some_and(|l| per_pattern_count[i] >= l) {
-                        break 'sections;
-                    }
-                }
-            }
+        let ranges = build_process_ranges(&data, args.all_sections, module.base);
+        if ranges.is_empty() {
+            utils::print_scope("no executable sections");
+            utils::print_no_matches();
+            continue;
         }
 
-        if !module_had_match {
+        let scope = ranges
+            .iter()
+            .map(|r| r.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        utils::print_scope(&scope);
+
+        let had_match = scan_with_ranges(
+            &data,
+            &ranges,
+            named_patterns,
+            bitness,
+            args,
+            limit,
+            &mut per_pattern_count,
+            &mut total,
+        );
+        if !had_match {
             utils::print_no_matches();
         }
 
         if limit.is_some_and(|l| per_pattern_count.iter().all(|c| *c >= l)) {
-            utils::print_summary(total_matches);
-            return Ok(());
+            break;
         }
     }
 
-    utils::print_summary(total_matches);
+    utils::print_summary(total);
     Ok(())
 }
 
 #[cfg(target_os = "windows")]
-fn label_for(np: &patterns_file::NamedPattern, idx: usize, total: usize) -> String {
+fn build_process_ranges(data: &[u8], all_sections: bool, module_base: u64) -> Vec<ScanRange> {
+    if all_sections {
+        return vec![ScanRange {
+            name: "entire module".to_string(),
+            data_start: 0,
+            data_end: data.len(),
+            rel_at_start: 0,
+            abs_at_start: module_base,
+        }];
+    }
+    match pe::executable_sections(data) {
+        Ok(secs) => secs
+            .into_iter()
+            .filter_map(|s| {
+                let start = s.virtual_address as usize;
+                let end = (start + s.virtual_size as usize).min(data.len());
+                if start >= end || start >= data.len() {
+                    return None;
+                }
+                Some(ScanRange {
+                    name: s.name,
+                    data_start: start,
+                    data_end: end,
+                    rel_at_start: s.virtual_address as usize,
+                    abs_at_start: module_base + s.virtual_address as u64,
+                })
+            })
+            .collect(),
+        Err(_) => vec![ScanRange {
+            name: "entire module (PE headers not parseable)".to_string(),
+            data_start: 0,
+            data_end: data.len(),
+            rel_at_start: 0,
+            abs_at_start: module_base,
+        }],
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn scan_with_ranges(
+    data: &[u8],
+    ranges: &[ScanRange],
+    named_patterns: &[NamedPattern],
+    bitness: u32,
+    args: &Args,
+    limit: Option<usize>,
+    per_pattern_count: &mut [usize],
+    total: &mut usize,
+) -> bool {
+    let mut had_match = false;
+    for (i, np) in named_patterns.iter().enumerate() {
+        if limit.is_some_and(|l| per_pattern_count[i] >= l) {
+            continue;
+        }
+        let label = label_for(np, i, named_patterns.len());
+        'sections: for range in ranges {
+            for hit in scanner::scan(&data[range.data_start..range.data_end], &np.pattern) {
+                let abs_addr = range.abs_at_start + hit.offset as u64;
+                let rel = range.rel_at_start + hit.offset;
+                let data_off = range.data_start + hit.offset;
+                utils::print_match(&label, abs_addr, rel, &hit.bytes);
+                if args.disasm {
+                    let lines = disasm::instructions_at(
+                        data,
+                        data_off,
+                        abs_addr,
+                        bitness,
+                        args.disasm_count,
+                    );
+                    utils::print_disasm(&lines);
+                }
+                per_pattern_count[i] += 1;
+                *total += 1;
+                had_match = true;
+                if limit.is_some_and(|l| per_pattern_count[i] >= l) {
+                    break 'sections;
+                }
+            }
+        }
+    }
+    had_match
+}
+
+fn label_for(np: &NamedPattern, idx: usize, total: usize) -> String {
     match &np.label {
         Some(l) => l.clone(),
         None if total == 1 => "MATCH".to_string(),
