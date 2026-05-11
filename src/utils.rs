@@ -31,6 +31,10 @@ pub fn print_module_header(module: &ModuleInfo) {
     );
 }
 
+pub fn print_scope(label: &str) {
+    println!("{BOLD}{GREEN}[+]{RESET} Scope   : {CYAN}{}{RESET}", label);
+}
+
 pub fn print_match(abs_addr: u64, rel_offset: usize, bytes: &[u8]) {
     let hex_bytes: Vec<String> = bytes.iter().map(|b| format!("{:02X}", b)).collect();
     let hex_str = hex_bytes.join(" ");

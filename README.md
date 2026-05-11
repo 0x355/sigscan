@@ -116,6 +116,7 @@ sigscan <TARGET> <PATTERN> [OPTIONS]
 | `-m`, `--module`  | Restrict scan to one module (e.g. `--module user32.dll`) |
 | `-f`, `--first`   | Stop after the first match |
 | `-n`, `--count N` | Stop after N matches  |
+| `--all-sections`  | Scan every section, not just executable ones (default scans only `IMAGE_SCN_MEM_EXECUTE`, e.g. `.text`) |
 
 ---
 
@@ -136,7 +137,7 @@ sigscan <TARGET> <PATTERN> [OPTIONS]
 Planned improvements, roughly in order of impact:
 
 - [x] **SIMD-accelerated first-byte search.** Replace the manual byte-by-byte skip in `scanner::scan` with `memchr::memchr` to vectorize the candidate-finding loop. Typically 5-20x faster on large modules.
-- [ ] **PE-aware scanning.** Parse the PE headers and limit scanning to `IMAGE_SCN_MEM_EXECUTE` sections by default (e.g. `.text`). Reduces false positives from string/resource data and shrinks the search space. Add `--all-sections` to opt back into the current behavior.
+- [x] **PE-aware scanning.** Parse the PE headers and limit scanning to `IMAGE_SCN_MEM_EXECUTE` sections by default (e.g. `.text`). Reduces false positives from string/resource data and shrinks the search space. Add `--all-sections` to opt back into the current behavior.
 - [ ] **Multi-pattern scan in a single pass.** Accept `--patterns sigs.txt` (one pattern per line, with optional labels) so multiple signatures can be located without re-enumerating modules and re-reading memory N times.
 - [ ] **`--json` output mode.** Machine-readable output for piping into other tools (IDA scripts, automation, CI checks of known offsets).
 - [ ] **Replace `unreachable!` in `scanner.rs` with `debug_assert!` + early return.** Today a hypothetical parser bug becomes a release-mode panic; a soft fallback is safer.

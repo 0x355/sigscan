@@ -1,5 +1,6 @@
 pub mod cli;
 pub mod pattern;
+pub mod pe;
 pub mod scanner;
 
 pub use cli::Args;
@@ -57,18 +58,61 @@ pub fn run(args: Args) -> anyhow::Result<()> {
         let data = memory::read_module(&handle, module)
             .with_context(|| format!("Failed to read module '{}'", module.name))?;
 
-        let matches = scanner::scan(&data, &pat);
+        let ranges: Vec<(String, usize, usize)> = if args.all_sections {
+            vec![("entire module".to_string(), 0, data.len())]
+        } else {
+            match pe::executable_sections(&data) {
+                Ok(secs) => {
+                    let r: Vec<_> = secs
+                        .into_iter()
+                        .filter_map(|s| {
+                            let start = s.virtual_address as usize;
+                            let end = (start + s.virtual_size as usize).min(data.len());
+                            (start < end && start < data.len()).then_some((s.name, start, end))
+                        })
+                        .collect();
+                    if r.is_empty() {
+                        utils::print_scope("no executable sections");
+                        utils::print_no_matches();
+                        continue;
+                    }
+                    r
+                }
+                Err(_) => vec![(
+                    "entire module (PE headers not parseable)".to_string(),
+                    0,
+                    data.len(),
+                )],
+            }
+        };
 
-        if matches.is_empty() {
+        let scope_label = ranges
+            .iter()
+            .map(|(name, _, _)| name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        utils::print_scope(&scope_label);
+
+        let mut module_matches: Vec<scanner::Match> = Vec::new();
+        for range in &ranges {
+            let start = range.1;
+            let end = range.2;
+            for hit in scanner::scan(&data[start..end], &pat) {
+                module_matches.push(scanner::Match {
+                    offset: hit.offset + start,
+                    bytes: hit.bytes,
+                });
+            }
+        }
+
+        if module_matches.is_empty() {
             utils::print_no_matches();
             continue;
         }
 
-        for hit in &matches {
+        for hit in &module_matches {
             let abs_addr = module.base + hit.offset as u64;
-            let rel_offset = hit.offset;
-
-            utils::print_match(abs_addr, rel_offset, &hit.bytes);
+            utils::print_match(abs_addr, hit.offset, &hit.bytes);
             total_matches += 1;
 
             if let Some(lim) = limit

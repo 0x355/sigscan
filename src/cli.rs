@@ -27,4 +27,7 @@ pub struct Args {
 
     #[arg(long, short = 'n', value_name = "N")]
     pub count: Option<usize>,
+
+    #[arg(long)]
+    pub all_sections: bool,
 }
