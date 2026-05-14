@@ -121,6 +121,7 @@ sigscan <TARGET> <PATTERN> [OPTIONS]
 | `--disasm`        | Print Intel-syntax disassembly starting at each match address (uses `iced-x86`; bitness auto-detected from the target's WOW64 status) |
 | `--disasm-count N`| Number of instructions to disassemble after each match (default 5) |
 | `--disasm-before N`| Number of instructions to show **before** the match by stream synchronization (default 2; set to 0 to disable). The match line is marked with `>>` |
+| `--json`           | Emit a single JSON object on stdout instead of the colored text report; composes with every other flag (`--first`, `--patterns`, `--disasm`, ...). Errors stay on stderr so the stream stays valid for piping. |
 
 ### File-on-disk scanning
 
@@ -132,6 +133,44 @@ sigscan ./packed.exe "55 8B EC" --all-sections
 ```
 
 This mode also works on Linux/macOS — useful for analyzing Windows binaries from a non-Windows host. The `--module` flag is incompatible with file targets (the file is itself the single module).
+
+### JSON output
+
+`--json` emits a single pretty-printed JSON object describing the scan. Stdout stays clean (errors go to stderr) so the output pipes into `jq`, IDA scripts, CI checks, etc.
+
+```json
+{
+  "target": {
+    "kind": "file",
+    "path": "C:\\Windows\\System32\\notepad.exe",
+    "arch": "x64",
+    "image_base": "0x140000000",
+    "size_bytes": 360448
+  },
+  "modules": [
+    {
+      "name": "notepad.exe",
+      "base": "0x140000000",
+      "size": 360448,
+      "scope": [".text", "fothk"],
+      "matches": [
+        {
+          "pattern": "MATCH",
+          "address": "0x140001830",
+          "offset": "0x1830",
+          "bytes": "48 89 5C 24"
+        }
+      ]
+    }
+  ],
+  "total_matches": 1
+}
+```
+
+- `target.kind` is `"file"` (with `path`, `arch`, `image_base`, `size_bytes`) or `"process"` (with `name`, `pid`, `arch`).
+- Addresses, offsets, and bytes are hex strings (`"0x..."` and space-separated `"48 89 5C 24"`) for cross-tool portability.
+- With `--disasm`, each match grows a `disasm` array of `{ ip, bytes, text, is_match }`; the `is_match: true` row marks the matched instruction.
+- Patterns from `--patterns` keep their labels (`pattern` field); single-pattern scans use `"MATCH"`.
 
 ### `--patterns` file format
 
@@ -166,7 +205,7 @@ Planned improvements, roughly in order of impact:
 - [x] **SIMD-accelerated first-byte search.** Replace the manual byte-by-byte skip in `scanner::scan` with `memchr::memchr` to vectorize the candidate-finding loop. Typically 5-20x faster on large modules.
 - [x] **PE-aware scanning.** Parse the PE headers and limit scanning to `IMAGE_SCN_MEM_EXECUTE` sections by default (e.g. `.text`). Reduces false positives from string/resource data and shrinks the search space. Add `--all-sections` to opt back into the current behavior.
 - [x] **Multi-pattern scan in a single pass.** Accept `--patterns sigs.txt` (one pattern per line, with optional labels) so multiple signatures can be located without re-enumerating modules and re-reading memory N times.
-- [ ] **`--json` output mode.** Machine-readable output for piping into other tools (IDA scripts, automation, CI checks of known offsets).
+- [x] **`--json` output mode.** Single pretty-printed JSON object on stdout (errors stay on stderr); composes with `--disasm`, `--patterns`, `--first`. See the **JSON output** section above for the schema.
 - [x] **Replace `unreachable!` in `scanner.rs` with `debug_assert!` + early return.** Today a hypothetical parser bug becomes a release-mode panic; a soft fallback is safer.
 - [x] **Disassembly context at each match.** Optional `--disasm` flag that uses `iced-x86` to print the instruction at the matched address (and a few before/after) to help confirm the hit is what you expected.
 - [x] **Backward disassembly context.** Extend `--disasm` to also show K instructions before the match by synchronizing on candidate stream offsets (try `match-1..match-15`, pick the deepest that lands cleanly on the match address). Useful for confirming a match sits at a function prologue boundary. *(Iterates one-instruction-back K times via `--disasm-before`; default 2.)*

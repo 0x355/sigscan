@@ -15,6 +15,7 @@ EXAMPLES:
     sigscan notepad.exe \"48 89\" --first
     sigscan notepad.exe \"48 89\" --count 5
     sigscan notepad.exe --patterns sigs.txt
+    sigscan C:\\Windows\\System32\\notepad.exe \"48 89 5C 24\" --first --json
 "
 )]
 pub struct Args {
@@ -46,4 +47,7 @@ pub struct Args {
 
     #[arg(long, value_name = "N", default_value_t = 2)]
     pub disasm_before: usize,
+
+    #[arg(long)]
+    pub json: bool,
 }
