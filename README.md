@@ -154,7 +154,7 @@ LeaRipRelative = 48 8D 0D ?? ?? ?? ??
 - **No kernel-mode scanning.** Only usermode pages accessible via `ReadProcessMemory` are scanned.
 - **Protected processes (PPL).** Anticheat software and some OS processes (`csrss.exe`, `smss.exe`) use kernel-enforced protection levels that prevent `OpenProcess` from succeeding even as Administrator.
 - **Obfuscated / packed modules** If a module's in memory layout differs from its on disk PE (e.g. custom loaders, runtime packing), the reported module size may be inaccurate.
-- **Performance** The scanner is a straightforward 0(n * m) linear search. For very large modules (> 200 MB) and long patterns, consider reducing scope with `--module`.
+- **Performance** Scanning uses Aho-Corasick on the longest literal run of each pattern as a multi-byte anchor; full-pattern verification (wildcards included) runs only at candidate positions. Multi-pattern scans walk the data once for all signatures. Practical complexity is O(n + matches * m). For very large modules (> 200 MB), consider reducing scope with `--module`.
 - **WOW64 (32-bit) processes** are supported: their 32-bit modules are enumerated via `TH32CS_SNAPMODULE32` and the process architecture is shown in the header.
 
 ---
@@ -171,7 +171,7 @@ Planned improvements, roughly in order of impact:
 - [x] **Disassembly context at each match.** Optional `--disasm` flag that uses `iced-x86` to print the instruction at the matched address (and a few before/after) to help confirm the hit is what you expected.
 - [x] **Backward disassembly context.** Extend `--disasm` to also show K instructions before the match by synchronizing on candidate stream offsets (try `match-1..match-15`, pick the deepest that lands cleanly on the match address). Useful for confirming a match sits at a function prologue boundary. *(Iterates one-instruction-back K times via `--disasm-before`; default 2.)*
 - [x] **Scan PE files on disk.** Allow `sigscan <path.exe> <pattern>` to load and scan a PE without attaching to a live process, useful when the target can't run or is anti-debug heavy. *(File-mode also works on Linux/macOS — the binary no longer hard-fails on non-Windows; only live process scanning stays Windows-only.)*
-- [ ] **Aho-Corasick / Boyer-Moore for long patterns.** The current scan is O(n·m). For long patterns or multi-pattern mode, a smarter algorithm would amortize the cost.
+- [x] **Aho-Corasick for long and multi-pattern scans.** The longest literal run of each pattern is picked as an anchor and all anchors are searched together via a single Aho-Corasick automaton; each hit is then verified against the full pattern (wildcards included) at the back-shifted candidate position. Multi-pattern mode walks the data once instead of N times; long patterns benefit from a multi-byte prefilter rather than a single-byte `memchr`.
 
 ---
 

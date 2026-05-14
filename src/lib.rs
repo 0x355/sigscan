@@ -300,14 +300,23 @@ fn scan_with_ranges(
     per_pattern_count: &mut [usize],
     total: &mut usize,
 ) -> bool {
+    let pats: Vec<_> = named_patterns.iter().map(|np| &np.pattern).collect();
+    let per_range: Vec<Vec<Vec<scanner::Match>>> = ranges
+        .iter()
+        .map(|r| scanner::scan_multi(&data[r.data_start..r.data_end], &pats))
+        .collect();
+
     let mut had_match = false;
     for (i, np) in named_patterns.iter().enumerate() {
-        if limit.is_some_and(|l| per_pattern_count[i] >= l) {
-            continue;
-        }
         let label = label_for(np, i, named_patterns.len());
-        'sections: for range in ranges {
-            for hit in scanner::scan(&data[range.data_start..range.data_end], &np.pattern) {
+        'ranges: for (r_idx, range) in ranges.iter().enumerate() {
+            if limit.is_some_and(|l| per_pattern_count[i] >= l) {
+                break 'ranges;
+            }
+            for hit in &per_range[r_idx][i] {
+                if limit.is_some_and(|l| per_pattern_count[i] >= l) {
+                    break 'ranges;
+                }
                 let abs_addr = range.abs_at_start + hit.offset as u64;
                 let rel = range.rel_at_start + hit.offset;
                 let data_off = range.data_start + hit.offset;
@@ -326,9 +335,6 @@ fn scan_with_ranges(
                 per_pattern_count[i] += 1;
                 *total += 1;
                 had_match = true;
-                if limit.is_some_and(|l| per_pattern_count[i] >= l) {
-                    break 'sections;
-                }
             }
         }
     }
